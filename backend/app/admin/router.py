@@ -13,6 +13,8 @@ from pydantic import BaseModel
 from app.core.auth import verify_admin
 from app.core.database import get_database
 from app.chunking import AVAILABLE_STRATEGIES, run_strategies
+from app.llm import LLM_CATALOGUE, ALL_MODEL_IDS, DEFAULT_MODEL
+from app.embedding import EMBEDDING_MODELS, DEFAULT_MODEL_ID as DEFAULT_EMBED_MODEL
 
 router = APIRouter(tags=["Admin"])
 
@@ -23,16 +25,20 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_CONFIG = {
     "_id": "global_config",
     "chunking": {
-        "active_strategies": ["recursive"],          # which strategies auto-run on upload
-        "options": AVAILABLE_STRATEGIES              # [recursive, sentence, paragraph]
+        "active_strategies": ["recursive"],
+        "options": AVAILABLE_STRATEGIES
     },
     "embedding": {
-        "active": "all-MiniLM-L6-v2",
-        "options": ["all-MiniLM-L6-v2"]
+        "active": DEFAULT_EMBED_MODEL,
+        "options": list(EMBEDDING_MODELS.keys())
+    },
+    "llm": {
+        "active_model": DEFAULT_MODEL,
+        "catalogue": LLM_CATALOGUE,
     },
     "evaluation": {
         "active": "custom",
-        "options": ["custom", "ragas"]
+        "options": ["custom", "ragas", "deepeval", "trulens", "langsmith"]
     }
 }
 
@@ -318,10 +324,17 @@ async def get_config(username: str = Depends(verify_admin)):
     return config
 
 
+@router.get("/config/llm-catalogue")
+async def get_llm_catalogue(username: str = Depends(verify_admin)):
+    """Return the full list of supported LLM providers and models."""
+    return LLM_CATALOGUE
+
+
 class ConfigUpdate(BaseModel):
     active_strategies: Optional[List[str]] = None  # chunking strategies
     embedding: Optional[str] = None
     evaluation: Optional[str] = None
+    active_model: Optional[str] = None             # llm model id
 
 
 @router.put("/config")
@@ -339,6 +352,10 @@ async def update_config(update_data: ConfigUpdate, username: str = Depends(verif
         set_fields["embedding.active"] = update_data.embedding
     if update_data.evaluation is not None:
         set_fields["evaluation.active"] = update_data.evaluation
+    if update_data.active_model is not None:
+        if update_data.active_model not in ALL_MODEL_IDS:
+            raise HTTPException(status_code=400, detail=f"Unknown model '{update_data.active_model}'. Check /admin/config/llm-catalogue.")
+        set_fields["llm.active_model"] = update_data.active_model
 
     if not set_fields:
         raise HTTPException(status_code=400, detail="No fields to update.")
