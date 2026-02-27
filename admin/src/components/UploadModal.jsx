@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { uploadPaper } from '../api';
+import { useState, useEffect } from 'react';
+import { uploadPaper, getFolders, createFolder } from '../api';
 
 export default function UploadModal({ isOpen, onClose, onSuccess, credentials }) {
     const [file, setFile] = useState(null);
@@ -7,7 +7,20 @@ export default function UploadModal({ isOpen, onClose, onSuccess, credentials })
     const [isError, setIsError] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
 
-    if (!isOpen) return null;
+    // Folder State
+    const [folders, setFolders] = useState([]);
+    const [selectedFolderId, setSelectedFolderId] = useState('');
+    const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+    const [newFolderName, setNewFolderName] = useState('');
+
+    useEffect(() => {
+        if (isOpen) {
+            getFolders(credentials).then(data => {
+                setFolders(data);
+                if (data.length > 0) setSelectedFolderId(data[0]._id);
+            }).catch(e => console.error("Failed to fetch folders", e));
+        }
+    }, [isOpen, credentials]);
 
     const handleFileChange = (e) => {
         setFile(e.target.files[0]);
@@ -24,9 +37,18 @@ export default function UploadModal({ isOpen, onClose, onSuccess, credentials })
         setIsError(false);
 
         try {
-            const res = await uploadPaper(file, credentials);
+            let finalFolderId = selectedFolderId;
+            if (isCreatingFolder && newFolderName.trim()) {
+                const newFolder = await createFolder(newFolderName.trim(), credentials);
+                finalFolderId = newFolder._id;
+                setFolders([newFolder, ...folders]); // Optimistic update
+            }
+
+            const res = await uploadPaper(file, finalFolderId, credentials);
             setStatusMsg(`✅ "${res.filename}" uploaded successfully!`);
             setFile(null);
+            setNewFolderName('');
+            setIsCreatingFolder(false);
             setTimeout(() => onSuccess(), 1200); // brief pause so user sees success
         } catch (err) {
             console.error(err);
@@ -73,6 +95,41 @@ export default function UploadModal({ isOpen, onClose, onSuccess, credentials })
                         {file && (
                             <div style={styles.fileSize}>
                                 {(file.size / 1024 / 1024).toFixed(2)} MB
+                            </div>
+                        )}
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600' }}>Workspace / Folder</label>
+                        {!isCreatingFolder ? (
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <select
+                                    value={selectedFolderId}
+                                    onChange={e => setSelectedFolderId(e.target.value)}
+                                    style={styles.input}
+                                >
+                                    <option value="">-- No Folder (Global) --</option>
+                                    {folders.map(f => (
+                                        <option key={f._id} value={f._id}>{f.name}</option>
+                                    ))}
+                                </select>
+                                <button type="button" onClick={() => setIsCreatingFolder(true)} style={styles.addFolderBtn}>
+                                    + New
+                                </button>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <input
+                                    type="text"
+                                    placeholder="Folder Name (e.g. Client A)"
+                                    value={newFolderName}
+                                    onChange={e => setNewFolderName(e.target.value)}
+                                    style={styles.input}
+                                    autoFocus
+                                />
+                                <button type="button" onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); }} style={styles.cancelFolderBtn}>
+                                    Cancel
+                                </button>
                             </div>
                         )}
                     </div>
@@ -171,4 +228,17 @@ const styles = {
         color: 'white', border: 'none', borderRadius: '8px',
         fontWeight: '700', fontSize: '0.9rem', transition: 'opacity 0.2s',
     },
+    input: {
+        flex: 1, padding: '0.6rem', background: 'rgba(255,255,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px',
+        color: '#f8fafc', fontSize: '0.9rem', outline: 'none'
+    },
+    addFolderBtn: {
+        padding: '0 0.75rem', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.5)',
+        color: '#93c5fd', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600'
+    },
+    cancelFolderBtn: {
+        padding: '0 0.75rem', background: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255, 255, 255, 0.2)',
+        color: '#cbd5e1', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem'
+    }
 };

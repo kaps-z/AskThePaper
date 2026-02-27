@@ -39,7 +39,9 @@ DEFAULT_CONFIG = {
     "evaluation": {
         "active": "custom",
         "options": ["custom", "ragas", "deepeval", "trulens", "langsmith"]
-    }
+    },
+    "debug_mode": False,       # show retrieval debug info in chat
+    "chat_enabled": True,      # kill-switch for the chat frontend
 }
 
 
@@ -129,16 +131,25 @@ async def upload_paper(
     }
 
 
-# ─── List files ────────────────────────────────────────────────────────────────
 @router.get("/files")
 async def list_files(username: str = Depends(verify_admin)):
     db = get_database()
+    
+    # Pre-fetch folders for mapping
+    folders_cursor = db["folders"].find({}, {"name": 1})
+    folder_map = {str(f["_id"]): f["name"] for f in await folders_cursor.to_list(1000)}
+
     cursor = db["admin_files"].find({}).sort("uploaded_at", -1)
     files = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
         if "title" not in doc:
             doc["title"] = doc.get("filename", "unknown.pdf").rsplit(".", 1)[0].replace("_", " ").title()
+        
+        # Attach folder name
+        f_id = doc.get("folder_id")
+        doc["folder_name"] = folder_map.get(f_id) if f_id else None
+        
         files.append(doc)
     return files
 
@@ -331,10 +342,12 @@ async def get_llm_catalogue(username: str = Depends(verify_admin)):
 
 
 class ConfigUpdate(BaseModel):
-    active_strategies: Optional[List[str]] = None  # chunking strategies
+    active_strategies: Optional[List[str]] = None
     embedding: Optional[str] = None
     evaluation: Optional[str] = None
-    active_model: Optional[str] = None             # llm model id
+    active_model: Optional[str] = None
+    debug_mode: Optional[bool] = None
+    chat_enabled: Optional[bool] = None
 
 
 @router.put("/config")
@@ -354,8 +367,12 @@ async def update_config(update_data: ConfigUpdate, username: str = Depends(verif
         set_fields["evaluation.active"] = update_data.evaluation
     if update_data.active_model is not None:
         if update_data.active_model not in ALL_MODEL_IDS:
-            raise HTTPException(status_code=400, detail=f"Unknown model '{update_data.active_model}'. Check /admin/config/llm-catalogue.")
+            raise HTTPException(status_code=400, detail=f"Unknown model '{update_data.active_model}'.")
         set_fields["llm.active_model"] = update_data.active_model
+    if update_data.debug_mode is not None:
+        set_fields["debug_mode"] = update_data.debug_mode
+    if update_data.chat_enabled is not None:
+        set_fields["chat_enabled"] = update_data.chat_enabled
 
     if not set_fields:
         raise HTTPException(status_code=400, detail="No fields to update.")

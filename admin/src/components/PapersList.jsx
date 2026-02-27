@@ -243,6 +243,11 @@ export default function PapersList({ credentials, refreshTrigger }) {
                                         </td>
                                         <td style={{ ...styles.td, fontSize: '0.85rem', color: '#94a3b8' }}>
                                             <div>{f.filename}</div>
+                                            {f.folder_name && (
+                                                <div style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#3b82f6', fontWeight: '600', fontSize: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', padding: '2px 6px', borderRadius: '4px', width: 'fit-content' }}>
+                                                    📁 {f.folder_name}
+                                                </div>
+                                            )}
                                             {/* Per-strategy chunk counts */}
                                             <StrategyBadges stats={f.strategy_stats} />
                                             {f.status === 'error' && f.error_msg && (

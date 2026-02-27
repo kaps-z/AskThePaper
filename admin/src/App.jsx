@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
+import Folders from './pages/Folders';
 import Navbar from './components/Navbar';
 
 import Sidebar from './components/Sidebar';
@@ -58,6 +59,10 @@ export default function App() {
           <Route
             path="/dashboard"
             element={<Dashboard credentials={credentials} setCredentials={setCredentials} />}
+          />
+          <Route
+            path="/folders"
+            element={<Folders credentials={credentials} />}
           />
           <Route
             path="/settings"

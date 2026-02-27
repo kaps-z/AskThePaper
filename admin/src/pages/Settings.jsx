@@ -86,6 +86,8 @@ export default function Settings({ credentials }) {
                 embedding: config.embedding?.active,
                 evaluation: config.evaluation?.active,
                 active_model: config.llm?.active_model,
+                debug_mode: config.debug_mode,
+                chat_enabled: config.chat_enabled
             }, credentials);
             showToast('Settings saved!');
         } catch (err) {
@@ -123,6 +125,29 @@ export default function Settings({ credentials }) {
             {/* ─── CONFIG TAB ──────────────────────────────────────────── */}
             {tab === 'config' && (
                 <form onSubmit={handleSave} style={st.form}>
+
+                    {/* Chat Access & Debug */}
+                    <Section title="🛠️ App Features" sub="Enable or disable core frontend features.">
+                        <div style={st.grid2}>
+                            <label onClick={() => setConfig(p => ({ ...p, chat_enabled: !p.chat_enabled }))} style={{ ...st.selCard, ...(config.chat_enabled ? st.selCardOn : {}) }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    <span style={{ fontSize: '1.3rem' }}>💬</span>
+                                    <span style={{ ...st.check, ...(config.chat_enabled ? st.checkOn : {}) }}>{config.chat_enabled ? '✓' : ''}</span>
+                                </div>
+                                <div style={st.selLabel}>Enable Chat Frontend</div>
+                                <div style={st.selDesc}>Allows users to access the ChatGPT-style interface on port 4000. Disable for maintenance.</div>
+                            </label>
+
+                            <label onClick={() => setConfig(p => ({ ...p, debug_mode: !p.debug_mode }))} style={{ ...st.selCard, ...(config.debug_mode ? { ...st.selCardOn, borderColor: '#f59e0b', background: 'rgba(245,158,11,0.1)' } : {}) }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    <span style={{ fontSize: '1.3rem' }}>🐛</span>
+                                    <span style={{ ...st.check, ...(config.debug_mode ? { ...st.checkOn, background: '#f59e0b', color: '#1e293b' } : {}) }}>{config.debug_mode ? '✓' : ''}</span>
+                                </div>
+                                <div style={st.selLabel}>Enable Debug Mode</div>
+                                <div style={st.selDesc}>Sends detailed retrieval metrics (retrieved chunks, cosine similarity scores) to the chat frontend.</div>
+                            </label>
+                        </div>
+                    </Section>
 
                     {/* Chunking */}
                     <Section title="🔀 Chunking Strategies" sub="All selected strategies run in parallel on every upload.">

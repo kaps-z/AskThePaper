@@ -26,6 +26,9 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
                 <Link to="/dashboard" style={linkStyle('/dashboard')}>
                     📄 Files Dashboard
                 </Link>
+                <Link to="/folders" style={linkStyle('/folders')}>
+                    📁 Enterprise Folders
+                </Link>
                 <Link to="/settings" style={linkStyle('/settings')}>
                     ⚙️ Pipeline Settings
                 </Link>

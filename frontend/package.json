@@ -1,0 +1,20 @@
+{
+    "name": "askthepaper-chat",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "dev": "vite --port 4000",
+        "build": "vite build",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "react-router-dom": "^6.21.0",
+        "axios": "^1.6.7"
+    },
+    "devDependencies": {
+        "@vitejs/plugin-react": "^4.2.1",
+        "vite": "^5.0.12"
+    }
+}

@@ -25,10 +25,11 @@ export const loginAdmin = async (username, password) => {
  * Uploads a PDF file to the backend.
  * Requires the credentials to be passed in to build the Auth header.
  */
-export const uploadPaper = async (file, credentials) => {
+export const uploadPaper = async (file, folderId, credentials) => {
   // 'multipart/form-data' is the HTTP standard for sending files
   const formData = new FormData();
   formData.append('file', file);
+  if (folderId) formData.append('folder_id', folderId);
 
   const response = await api.post('/admin/upload', formData, {
     auth: {
@@ -129,6 +130,23 @@ export const deleteChunks = async (fileId, credentials, strategy = null) => {
     ? `/admin/files/${fileId}/chunks?strategy=${strategy}`
     : `/admin/files/${fileId}/chunks`;
   const response = await api.delete(url, {
+    auth: { username: credentials.username, password: credentials.password }
+  });
+  return response.data;
+};
+
+/**
+ * Enterprise Folders CRUD
+ */
+export const getFolders = async (credentials) => {
+  const response = await api.get('/admin/folders', {
+    auth: { username: credentials.username, password: credentials.password }
+  });
+  return response.data;
+};
+
+export const createFolder = async (name, credentials) => {
+  const response = await api.post('/admin/folders', { name }, {
     auth: { username: credentials.username, password: credentials.password }
   });
   return response.data;

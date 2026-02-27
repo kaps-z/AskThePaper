@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import get_database, lifespan
 from app.admin.router import router as admin_router
+from app.chat.router import router as chat_router
 
 # ---------------------------------------------------------------------------
 # App Initialization
@@ -44,6 +45,7 @@ app.add_middleware(
 # Routes
 # ---------------------------------------------------------------------------
 app.include_router(admin_router, prefix="/admin")
+app.include_router(chat_router, prefix="/chat")
 
 @app.get("/", tags=["General"])
 async def root():

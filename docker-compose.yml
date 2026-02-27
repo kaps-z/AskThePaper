@@ -41,6 +41,21 @@ services:
       - askthepaper_network
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8000
+    container_name: askthepaper_frontend
+    ports:
+      - "4000:80"
+    depends_on:
+      - backend
+    networks:
+      - askthepaper_network
+    restart: unless-stopped
+
 networks:
   askthepaper_network:
     driver: bridge
