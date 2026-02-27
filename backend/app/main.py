@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import get_database, lifespan
+from app.admin.router import router as admin_router
 
 # ---------------------------------------------------------------------------
 # App Initialization
@@ -42,6 +43,7 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+app.include_router(admin_router, prefix="/admin")
 
 @app.get("/", tags=["General"])
 async def root():

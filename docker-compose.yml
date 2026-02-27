@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  mongodb:
+    # mongodb/mongodb-atlas-local runs a local Atlas-compatible instance,
+    # which supports Vector Search — critical for our RAG retrieval step.
+    image: mongodb/mongodb-atlas-local:latest
+    container_name: askthepaper_mongo
+    ports:
+      - "27017:27017"   # host:container — connect via localhost:27017
+    environment:
+      - MONGODB_INITDB_ROOT_USERNAME=root
+      - MONGODB_INITDB_ROOT_PASSWORD=password
+    volumes:
+      - mongo_data:/data/db   # persist data across container restarts
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+    driver: local

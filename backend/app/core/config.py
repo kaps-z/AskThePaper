@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     MONGODB_URL: str
     DATABASE_NAME: str
 
-ADMIN_USERNAME: str
-ADMIN_PASSWORD: str
+    ADMIN_USERNAME: str
+    ADMIN_PASSWORD: str
 
     # Tell pydantic-settings where our .env file lives.
     # __file__ is this file's path; we go two levels up to reach backend/.env

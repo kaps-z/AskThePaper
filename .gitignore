@@ -1,4 +1,4 @@
-# Python-generated files
+# Default uv / Python ignores
 __pycache__/
 *.py[oc]
 build/
@@ -6,9 +6,15 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
-.venv
+# Backend
+backend/.venv/
+backend/.env
+backend/.env.*
+backend/uploads/
 
-# Environment variables (secrets — never commit)
-.env
-.env.*
+# Admin Frontend
+admin/node_modules/
+admin/dist/
+admin/.env
+admin/.env.*
+.DS_Store
