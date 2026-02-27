@@ -32,22 +32,22 @@ async def seed_database():
     default_config = {
         "_id": config_id,
         "chunking": {
-            "active": "semantic",
-            "options": ["semantic", "llm"]
+            "active_strategies": ["recursive"],   # which strategies auto-run on upload
+            "options": ["recursive", "sentence", "paragraph", "semantic"]
         },
         "embedding": {
-            "active": "gemini",
-            "options": ["gemini", "openai", "huggingface"]
+            "active": "all-MiniLM-L6-v2",
+            "options": ["all-MiniLM-L6-v2"]
         },
         "evaluation": {
-            "active": "ragas",
-            "options": ["ragas", "custom"]
+            "active": "custom",
+            "options": ["custom", "ragas"]
         }
     }
     
     await config_collection.insert_one(default_config)
-    print("Successfully seeded the default system configuration!")
-    print(f"Seeded Document: {default_config}")
+    print("✅ Successfully seeded the default system configuration!")
+    print(f"   Seeded: {default_config}")
 
 if __name__ == "__main__":
     asyncio.run(seed_database())

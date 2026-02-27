@@ -83,53 +83,53 @@ export const getConfig = async (credentials) => {
 };
 
 /**
- * Updates the active models in the global configuration.
+ * Updates the active strategies and model choices in the global configuration.
+ * configData shape: { active_strategies: string[], embedding?: string, evaluation?: string }
  */
 export const updateConfig = async (configData, credentials) => {
   const response = await api.put('/admin/config', configData, {
-    auth: {
-      username: credentials.username,
-      password: credentials.password
-    }
+    auth: { username: credentials.username, password: credentials.password }
   });
   return response.data;
 };
 
 /**
  * Triggers the chunking pipeline for a specific file.
+ * Pass strategies array to run specific strategies; omit for config default.
  */
-export const processFile = async (fileId, credentials) => {
-  const response = await api.post(`/admin/files/${fileId}/process`, null, {
-    auth: {
-      username: credentials.username,
-      password: credentials.password
+export const processFile = async (fileId, credentials, strategies = null) => {
+  const response = await api.post(`/admin/files/${fileId}/process`,
+    strategies ? { strategies } : {},
+    {
+      auth: { username: credentials.username, password: credentials.password }
     }
-  });
+  );
   return response.data;
 };
 
 /**
  * Fetches all chunks associated with a specific paper.
+ * Optionally filter by strategy name.
  */
-export const getChunks = async (fileId, credentials) => {
-  const response = await api.get(`/admin/files/${fileId}/chunks`, {
-    auth: {
-      username: credentials.username,
-      password: credentials.password
-    }
+export const getChunks = async (fileId, credentials, strategy = null) => {
+  const url = strategy
+    ? `/admin/files/${fileId}/chunks?strategy=${strategy}`
+    : `/admin/files/${fileId}/chunks`;
+  const response = await api.get(url, {
+    auth: { username: credentials.username, password: credentials.password }
   });
   return response.data;
 };
 
 /**
- * Deletes all chunks and embeddings for a paper.
+ * Deletes chunks for a paper. Pass strategy to clear only one strategy.
  */
-export const deleteChunks = async (fileId, credentials) => {
-  const response = await api.delete(`/admin/files/${fileId}/chunks`, {
-    auth: {
-      username: credentials.username,
-      password: credentials.password
-    }
+export const deleteChunks = async (fileId, credentials, strategy = null) => {
+  const url = strategy
+    ? `/admin/files/${fileId}/chunks?strategy=${strategy}`
+    : `/admin/files/${fileId}/chunks`;
+  const response = await api.delete(url, {
+    auth: { username: credentials.username, password: credentials.password }
   });
   return response.data;
 };
