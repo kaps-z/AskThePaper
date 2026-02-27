@@ -50,33 +50,50 @@ async def upload_paper(
             detail="Only PDF files are allowed",
         )
 
-    # 1. Save file to disk
-    file_path = UPLOAD_DIR / file.filename
+    # 2. Record metadata in MongoDB first to get a unique ID
+    db = get_database()
+    
+    # Simple title: filename without extension
+    title = file.filename.rsplit(".", 1)[0].replace("_", " ").title()
+    
+    paper_document = {
+        "filename": file.filename,
+        "title": title,
+        "uploaded_by": username,
+        "uploaded_at": datetime.now(timezone.utc),
+        "status": "uploaded",
+    }
+    
+    result = await db["admin_files"].insert_one(paper_document)
+    file_id = str(result.inserted_id)
+
+    # 3. Save file to disk with unique name (ID + sanitized Title)
+    safe_title = "".join([c if c.isalnum() or c in "-_" else "_" for c in title.replace(" ", "_")])
+    unique_filename = f"{file_id}_{safe_title}.pdf"
+    file_path = UPLOAD_DIR / unique_filename
+
     try:
-        # We read the whole file into memory here for simplicity.
-        # For huge files, chunked reading is better.
         contents = await file.read()
         with open(file_path, "wb") as f:
             f.write(contents)
+            
+        # 4. Update document with the final filepath
+        await db["admin_files"].update_one(
+            {"_id": result.inserted_id},
+            {"$set": {"filepath": str(file_path)}}
+        )
     except Exception as e:
+        # Cleanup if saving fails
+        await db["admin_files"].delete_one({"_id": result.inserted_id})
+        if file_path.exists():
+            file_path.unlink()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to save file: {e}",
         )
 
-    # 2. Record metadata in MongoDB
-    db = get_database()
-    paper_document = {
-        "filename": file.filename,
-        "filepath": str(file_path),
-        "uploaded_by": username,
-        "uploaded_at": datetime.now(timezone.utc),
-        "status": "uploaded",  # Later we'll change this to "chunked", "embedded", etc.
-    }
-    
-    await db["admin_files"].insert_one(paper_document)
-
     return {
+        "id": file_id,
         "message": "File uploaded successfully",
         "filename": file.filename,
         "status": "uploaded"
@@ -98,6 +115,10 @@ async def list_files(username: str = Depends(verify_admin)):
     files = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])  # Convert ObjectId to string
+        # Fallback for older files that don't have the 'title' field
+        if "title" not in doc:
+            filename = doc.get("filename", "unknown.pdf")
+            doc["title"] = filename.rsplit(".", 1)[0].replace("_", " ").title()
         files.append(doc)
         
     return files
@@ -139,6 +160,61 @@ async def delete_file(
     return {"message": "File deleted successfully", "id": file_id}
 
 
+@router.get("/files/{file_id}/chunks")
+async def get_paper_chunks(
+    file_id: str,
+    username: str = Depends(verify_admin)
+):
+    """
+    Returns all chunks associated with a specific paper.
+    """
+    from bson import ObjectId
+    db = get_database()
+    
+    try:
+        obj_id = ObjectId(file_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid file ID format")
+        
+    cursor = db["paper_chunks"].find({"paper_id": obj_id}).sort("metadata.chunk_index", 1)
+    chunks = await cursor.to_list(length=None)
+    
+    for c in chunks:
+        c["_id"] = str(c["_id"])
+        c["paper_id"] = str(c["paper_id"])
+        
+    return chunks
+
+
+@router.delete("/files/{file_id}/chunks")
+async def delete_paper_chunks(
+    file_id: str,
+    username: str = Depends(verify_admin)
+):
+    """
+    Deletes all chunks and embeddings for a paper and resets its status.
+    """
+    from bson import ObjectId
+    db = get_database()
+    
+    try:
+        obj_id = ObjectId(file_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid file ID format")
+        
+    # 1. Delete the chunks
+    await db["paper_chunks"].delete_many({"paper_id": obj_id})
+    await db["raw_paper_chunks"].delete_many({"paper_id": obj_id})
+    
+    # 2. Reset the paper status
+    await db["admin_files"].update_one(
+        {"_id": obj_id},
+        {"$set": {"status": "uploaded", "chunks_count": 0}}
+    )
+    
+    return {"message": "Chunks and embeddings cleared", "id": file_id}
+
+
 @router.post("/files/{file_id}/process")
 async def process_file(
     file_id: str,
@@ -149,6 +225,7 @@ async def process_file(
     """
     from bson import ObjectId
     from app.chunking import extract_text_with_metadata, chunk_pages, store_chunks
+    from app.embedding import embed_paper_chunks
     
     db = get_database()
     
@@ -164,7 +241,14 @@ async def process_file(
         
     filepath = paper.get("filepath")
     if not filepath or not Path(filepath).exists():
-        raise HTTPException(status_code=404, detail="Physical file missing on server")
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "The PDF file was not found on the server. This usually happens when the "
+                "Docker container was restarted without a persistent volume for uploads. "
+                "Please delete this record and re-upload the file."
+            )
+        )
 
     # 2. Update status to 'processing'
     await db["admin_files"].update_one(
@@ -174,24 +258,62 @@ async def process_file(
 
     try:
         # 3. Extract and Chunk
-        pages = extract_text_with_metadata(filepath)
-        chunks = chunk_pages(pages)
-        
-        # 4. Store Chunks
-        await store_chunks(file_id, chunks)
+        chunking_model = "RecursiveCharacterTextSplitter (LangChain)"
+        try:
+            pages = extract_text_with_metadata(filepath)
+            if not pages:
+                raise ValueError(
+                    "No readable text could be extracted from this PDF. "
+                    "The file may be a scanned image-only document (not OCR'd), "
+                    "or it may be password-protected or corrupted. "
+                    "Try running OCR on the PDF first (e.g. with Adobe Acrobat or ocrmypdf)."
+                )
+                
+            chunks = chunk_pages(pages)
+            if not chunks:
+                raise ValueError("PDF content resulted in zero chunks after splitting. Check the file content.")
+            
+            # 4. Store Chunks
+            await store_chunks(file_id, chunks)
+        except Exception as e:
+            raise ValueError(f"Chunking Failed ({chunking_model}): {e}")
+
+        # 5. Generate Embeddings (Milestone 4)
+        embedding_model = "all-MiniLM-L6-v2 (SentenceTransformers)"
+        try:
+            await embed_paper_chunks(file_id)
+        except Exception as e:
+            raise ValueError(f"Embedding Failed ({embedding_model}): {e}")
+            
+        # 6. Final Status Update with Metadata
+        await db["admin_files"].update_one(
+            {"_id": obj_id},
+            {"$set": {
+                "status": "embedded",
+                "chunking_model": chunking_model,
+                "embedding_model": embedding_model,
+                "processed_at": datetime.now(timezone.utc)
+            }}
+        )
         
         return {
             "message": "Paper processed successfully",
+            "pages_extracted": len(pages),
             "chunks_created": len(chunks),
-            "status": "chunked"
+            "status": "embedded",
+            "models": {
+                "chunking": chunking_model,
+                "embedding": embedding_model
+            }
         }
     except Exception as e:
-        # Revert status on failure
+        # Capture error and update DB so UI can show it
+        error_detail = str(e)
         await db["admin_files"].update_one(
             {"_id": obj_id},
-            {"$set": {"status": "error", "error_msg": str(e)}}
+            {"$set": {"status": "error", "error_msg": error_detail}}
         )
-        raise HTTPException(status_code=500, detail=f"Processing failed: {e}")
+        raise HTTPException(status_code=500, detail=error_detail)
 
 
 from pydantic import BaseModel

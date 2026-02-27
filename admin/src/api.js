@@ -108,4 +108,30 @@ export const processFile = async (fileId, credentials) => {
   return response.data;
 };
 
+/**
+ * Fetches all chunks associated with a specific paper.
+ */
+export const getChunks = async (fileId, credentials) => {
+  const response = await api.get(`/admin/files/${fileId}/chunks`, {
+    auth: {
+      username: credentials.username,
+      password: credentials.password
+    }
+  });
+  return response.data;
+};
+
+/**
+ * Deletes all chunks and embeddings for a paper.
+ */
+export const deleteChunks = async (fileId, credentials) => {
+  const response = await api.delete(`/admin/files/${fileId}/chunks`, {
+    auth: {
+      username: credentials.username,
+      password: credentials.password
+    }
+  });
+  return response.data;
+};
+
 export default api;

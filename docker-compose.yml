@@ -17,6 +17,11 @@ services:
     # This allows the container to resolve 'host.docker.internal' on Linux
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Mount the uploads directory so PDFs persist across container restarts.
+    # Without this, every `docker compose up` would lose all uploaded files
+    # and the backend would return 404 "Physical file missing" on process.
+    volumes:
+      - uploads_data:/app/uploads
     networks:
       - askthepaper_network
     restart: unless-stopped
@@ -25,11 +30,11 @@ services:
     build:
       context: ./admin
       dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8000
     container_name: askthepaper_admin
     ports:
       - "3000:80"
-    environment:
-      - VITE_API_URL=http://localhost:8000
     depends_on:
       - backend
     networks:
@@ -39,3 +44,7 @@ services:
 networks:
   askthepaper_network:
     driver: bridge
+
+# Named volume: persists uploaded PDFs across container restarts/rebuilds.
+volumes:
+  uploads_data:

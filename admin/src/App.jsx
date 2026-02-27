@@ -9,8 +9,14 @@ import Sidebar from './components/Sidebar';
 
 export default function App() {
   const [credentials, setCredentials] = useState(() => {
-    const saved = localStorage.getItem('admin_credentials');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('admin_credentials');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      console.error('Failed to parse admin_credentials:', e);
+      localStorage.removeItem('admin_credentials');
+      return null;
+    }
   });
 
   // Track if the sidebar is open or closed

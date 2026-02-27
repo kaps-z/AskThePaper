@@ -97,8 +97,8 @@ AskThePaper/
 |---|-----------|--------|
 | 1 | Project Plan + Backend Init + FastAPI Health Check | [x] Completed |
 | 2 | MongoDB connection + Config management | [x] Completed |
-| 3 | `chunking.py` — PDF parsing & chunk storage | 🔄 In Progress |
-| 4 | `embedding.py` — Vector embedding generation | ⬜ Planned |
+| 3 | `chunking.py` — PDF parsing & chunk storage | [x] Completed |
+| 4 | `embedding.py` — Vector embedding generation | [x] Completed |
 | 4.5 | Admin Navbar and Pipeline Configuration | ⬜ Planned |
 | 5 | `retrieval.py` — Vector search retrieval | ⬜ Planned |
 | 6 | `prompting.py` — LLM prompt construction | ⬜ Planned |
