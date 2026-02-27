@@ -9,21 +9,24 @@ A Research Paper RAG (Retrieval-Augmented Generation) system. Upload academic pa
 - Node.js & npm (for the React apps)
 - Docker (for local MongoDB Atlas Vector Search)
 
-### 2. Database Setup
-Start a local MongoDB Atlas instance with Vector Search support:
+### 2. Run the Project (Docker Way — Recommended)
+The fastest way to get started is using Docker. This starts the Database, Backend, and Admin Panel all at once:
+
 ```bash
-docker-compose up -d
+docker compose up --build
 ```
 
-Seed the system configuration (embedding/chunking models):
-```bash
-cd backend
-uv run scripts/seed_db.py
-cd ..
-```
+- **Backend API**: [http://localhost:8000](http://localhost:8000)
+- **Admin Panel**: [http://localhost:3000](http://localhost:3000)
+- **API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-### 3. Run the Project
-Use the convenience script to start both the **Backend** and **Admin Panel** at once:
+For a deep dive into how Docker works in this project, check out [DOCKER_GUIDE.md](file:///home/kapil/project/personal/AskThePaper/DOCKER_GUIDE.md).
+
+### 3. Run the Project (Manual Way)
+If you prefer running without Docker (except for the DB):
+
+1. Start the DB: `docker-compose up -d mongodb`
+2. Run the convenience script:
 ```bash
 chmod +x run_dev.sh
 ./run_dev.sh

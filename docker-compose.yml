@@ -1,20 +1,41 @@
 version: "3.9"
 
 services:
-  mongodb:
-    # mongodb/mongodb-atlas-local runs a local Atlas-compatible instance,
-    # which supports Vector Search — critical for our RAG retrieval step.
-    image: mongodb/mongodb-atlas-local:latest
-    container_name: askthepaper_mongo
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: askthepaper_backend
     ports:
-      - "27017:27017"   # host:container — connect via localhost:27017
+      - "8000:8000"
     environment:
-      - MONGODB_INITDB_ROOT_USERNAME=root
-      - MONGODB_INITDB_ROOT_PASSWORD=password
-    volumes:
-      - mongo_data:/data/db   # persist data across container restarts
+      # Use host.docker.internal to talk to the MongoDB running on your machine
+      - MONGODB_URL=mongodb://host.docker.internal:27017
+      - DATABASE_NAME=askthepaper
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=admin
+    # This allows the container to resolve 'host.docker.internal' on Linux
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - askthepaper_network
     restart: unless-stopped
 
-volumes:
-  mongo_data:
-    driver: local
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+    container_name: askthepaper_admin
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - askthepaper_network
+    restart: unless-stopped
+
+networks:
+  askthepaper_network:
+    driver: bridge

@@ -26,11 +26,12 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: str
 
     # Tell pydantic-settings where our .env file lives.
-    # __file__ is this file's path; we go two levels up to reach backend/.env
+    # It will ONLY be used if it exists locally.
+    # Environment variables (from Docker) will ALWAYS override .env values.
     model_config = SettingsConfigDict(
-        env_file=".env",          # relative to where uvicorn is launched (backend/)
+        env_file=".env",
         env_file_encoding="utf-8",
-        extra="ignore",           # silently ignore unknown env vars
+        extra="ignore",
     )
 
 
