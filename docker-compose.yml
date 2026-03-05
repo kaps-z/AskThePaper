@@ -60,6 +60,6 @@ networks:
   askthepaper_network:
     driver: bridge
 
-# Named volume: persists uploaded PDFs across container restarts/rebuilds.
+# Named volumes: persist data across container restarts/rebuilds.
 volumes:
   uploads_data:

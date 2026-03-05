@@ -10,13 +10,15 @@ export default function SessionSidebar({
     selectedModel,
     setSelectedModel,
     selectedStrategy,
-    setSelectedStrategy
+    setSelectedStrategy,
+    documents, // Note: this prop is now an array of topics, not documents
+    selectedPaperId, // Note: this now holds selectedTopicId
+    setSelectedPaperId
 }) {
     return (
         <div style={{
             width: '260px',
-            backgroundColor: '#0f172a', /* darker blue sidebar */
-            borderRight: '1px solid #1e293b',
+            backgroundColor: '#050505', /* Drier, deeper black for futuristic look */
             display: 'flex',
             flexDirection: 'column',
             height: '100%',
@@ -40,6 +42,28 @@ export default function SessionSidebar({
                 </button>
             </div>
 
+            <div style={{ padding: '0 1rem 1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#64748b', marginBottom: '0.25rem' }}>Research Topic</label>
+                <select
+                    value={selectedPaperId} // holds topic id
+                    onChange={(e) => setSelectedPaperId(e.target.value)}
+                    style={{
+                        width: '100%', padding: '0.6rem 0.75rem', backgroundColor: '#111', color: '#f8fafc',
+                        border: 'none', borderRadius: '0.375rem', fontSize: '0.875rem', outline: 'none',
+                        boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05)',
+                        transition: 'box-shadow 0.2s', cursor: 'pointer'
+                    }}
+                    onFocus={(e) => e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.5), 0 0 0 1px #3b82f6'}
+                    onBlur={(e) => e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05)'}
+
+                >
+                    <option value="">-- Select Topic --</option>
+                    {documents && Array.isArray(documents) && documents.map(t => (
+                        <option key={t._id} value={t._id}>{t.name}</option>
+                    ))}
+                </select>
+            </div>
+
             <div style={{ flex: 1, overflowY: 'auto', padding: '0 1rem' }}>
                 <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#64748b', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Recent</div>
                 {sessions.length === 0 ? (
@@ -55,7 +79,7 @@ export default function SessionSidebar({
                                 padding: '0.5rem 0.75rem',
                                 borderRadius: '0.375rem',
                                 cursor: 'pointer',
-                                backgroundColor: activeSessionId === session.session_id ? '#1e293b' : 'transparent',
+                                backgroundColor: activeSessionId === session.session_id ? '#171717' : 'transparent',
                                 color: activeSessionId === session.session_id ? '#f8fafc' : '#cbd5e1',
                                 marginBottom: '0.25rem',
                                 fontSize: '0.875rem'
@@ -82,16 +106,20 @@ export default function SessionSidebar({
                 )}
             </div>
 
-            <div style={{ padding: '1rem', borderTop: '1px solid #1e293b' }}>
+            <div style={{ padding: '1rem', borderTop: '1px solid #111' }}>
                 <div style={{ marginBottom: '0.75rem' }}>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#64748b', marginBottom: '0.25rem' }}>Model</label>
                     <select
                         value={selectedModel}
                         onChange={(e) => setSelectedModel(e.target.value)}
                         style={{
-                            width: '100%', padding: '0.5rem', backgroundColor: '#1e293b', color: '#f8fafc',
-                            border: '1px solid #334155', borderRadius: '0.375rem', fontSize: '0.875rem', outline: 'none'
+                            width: '100%', padding: '0.6rem 0.75rem', backgroundColor: '#111', color: '#f8fafc',
+                            border: 'none', borderRadius: '0.375rem', fontSize: '0.875rem', outline: 'none',
+                            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05)',
+                            transition: 'box-shadow 0.2s', cursor: 'pointer'
                         }}
+                        onFocus={(e) => e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.5), 0 0 0 1px #3b82f6'}
+                        onBlur={(e) => e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05)'}
                     >
                         {config?.llm_catalogue && Object.entries(config.llm_catalogue).map(([provider, models]) => {
                             const providerNames = {
@@ -113,12 +141,17 @@ export default function SessionSidebar({
                         value={selectedStrategy}
                         onChange={(e) => setSelectedStrategy(e.target.value)}
                         style={{
-                            width: '100%', padding: '0.5rem', backgroundColor: '#1e293b', color: '#f8fafc',
-                            border: '1px solid #334155', borderRadius: '0.375rem', fontSize: '0.875rem', outline: 'none'
+                            width: '100%', padding: '0.6rem 0.75rem', backgroundColor: '#111', color: '#f8fafc',
+                            border: 'none', borderRadius: '0.375rem', fontSize: '0.875rem', outline: 'none',
+                            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05)',
+                            transition: 'box-shadow 0.2s', cursor: 'pointer'
                         }}
+                        onFocus={(e) => e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.5), 0 0 0 1px #3b82f6'}
+                        onBlur={(e) => e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05)'}
                     >
-                        <option value="">Auto (All Active)</option>
-                        {config?.active_strategies?.map((s) => (
+                        <option value="">Auto (Default)</option>
+                        <option value="all" disabled>All Strategies (Coming Soon)</option>
+                        {config?.available_strategies?.map((s) => (
                             <option key={s} value={s}>{s}</option>
                         ))}
                     </select>

@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
-import Folders from './pages/Folders';
+import VisibilitySettings from './pages/VisibilitySettings';
 import Navbar from './components/Navbar';
 
 import Sidebar from './components/Sidebar';
@@ -61,12 +61,12 @@ export default function App() {
             element={<Dashboard credentials={credentials} setCredentials={setCredentials} />}
           />
           <Route
-            path="/folders"
-            element={<Folders credentials={credentials} />}
-          />
-          <Route
             path="/settings"
             element={<Settings credentials={credentials} />}
+          />
+          <Route
+            path="/visibility"
+            element={<VisibilitySettings credentials={credentials} />}
           />
         </Route>
 

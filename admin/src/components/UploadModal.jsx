@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { uploadPaper, getFolders, createFolder } from '../api';
 
 export default function UploadModal({ isOpen, onClose, onSuccess, credentials }) {
-    const [file, setFile] = useState(null);
+    const [files, setFiles] = useState([]);
     const [statusMsg, setStatusMsg] = useState('');
     const [isError, setIsError] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
 
     // Folder State
     const [folders, setFolders] = useState([]);
@@ -23,18 +24,21 @@ export default function UploadModal({ isOpen, onClose, onSuccess, credentials })
     }, [isOpen, credentials]);
 
     const handleFileChange = (e) => {
-        setFile(e.target.files[0]);
+        const selectedFiles = Array.from(e.target.files);
+        setFiles(selectedFiles);
         setStatusMsg('');
         setIsError(false);
+        setUploadProgress({ current: 0, total: 0 });
     };
 
     const handleUpload = async (e) => {
         e.preventDefault();
-        if (!file) return;
+        if (files.length === 0) return;
 
         setIsUploading(true);
         setStatusMsg('');
         setIsError(false);
+        setUploadProgress({ current: 0, total: files.length });
 
         try {
             let finalFolderId = selectedFolderId;
@@ -44,21 +48,47 @@ export default function UploadModal({ isOpen, onClose, onSuccess, credentials })
                 setFolders([newFolder, ...folders]); // Optimistic update
             }
 
-            const res = await uploadPaper(file, finalFolderId, credentials);
-            setStatusMsg(`✅ "${res.filename}" uploaded successfully!`);
-            setFile(null);
-            setNewFolderName('');
-            setIsCreatingFolder(false);
-            setTimeout(() => onSuccess(), 1200); // brief pause so user sees success
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                try {
+                    setUploadProgress(p => ({ ...p, current: i + 1 }));
+                    await uploadPaper(files[i], finalFolderId, credentials);
+                    successCount++;
+                } catch (err) {
+                    console.error(`Failed to upload ${files[i].name}`, err);
+                    errorCount++;
+                }
+            }
+
+            if (errorCount === 0) {
+                setStatusMsg(`✅ Successfully uploaded ${successCount} document(s) to the topic!`);
+            } else if (successCount > 0) {
+                setStatusMsg(`⚠️ Uploaded ${successCount} document(s), but ${errorCount} failed.`);
+                setIsError(true);
+            } else {
+                setStatusMsg(`❌ Failed to upload all ${errorCount} document(s).`);
+                setIsError(true);
+            }
+
+            if (successCount > 0) {
+                setFiles([]);
+                setNewFolderName('');
+                setIsCreatingFolder(false);
+                setTimeout(() => onSuccess(), 1500); // brief pause so user sees success
+            }
         } catch (err) {
             console.error(err);
             const detail = err.response?.data?.detail || err.message || 'Unknown error';
-            setStatusMsg(`❌ Upload failed: ${detail}`);
+            setStatusMsg(`❌ Topic creation failed: ${detail}`);
             setIsError(true);
         } finally {
             setIsUploading(false);
         }
     };
+
+    if (!isOpen) return null;
 
     return (
         <div style={styles.overlay}>
@@ -77,30 +107,33 @@ export default function UploadModal({ isOpen, onClose, onSuccess, credentials })
                     <div
                         style={{
                             ...styles.dropZone,
-                            borderColor: file ? 'rgba(59, 130, 246, 0.7)' : 'rgba(255,255,255,0.15)',
-                            backgroundColor: file ? 'rgba(59, 130, 246, 0.06)' : 'rgba(255,255,255,0.02)',
+                            borderColor: files.length > 0 ? 'rgba(59, 130, 246, 0.7)' : 'rgba(255,255,255,0.15)',
+                            backgroundColor: files.length > 0 ? 'rgba(59, 130, 246, 0.06)' : 'rgba(255,255,255,0.02)',
                         }}
                     >
                         <div style={styles.dropIcon}>📄</div>
                         <label style={styles.dropLabel}>
-                            {file ? file.name : 'Click to select a PDF file'}
+                            {files.length > 0
+                                ? `${files.length} file(s) selected`
+                                : 'Click to select multiple PDF files'}
                             <input
                                 type="file"
                                 accept="application/pdf"
+                                multiple
                                 onChange={handleFileChange}
                                 required
                                 style={{ display: 'none' }}
                             />
                         </label>
-                        {file && (
+                        {files.length > 0 && (
                             <div style={styles.fileSize}>
-                                {(file.size / 1024 / 1024).toFixed(2)} MB
+                                Total size: {(files.reduce((acc, f) => acc + f.size, 0) / 1024 / 1024).toFixed(2)} MB
                             </div>
                         )}
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600' }}>Workspace / Folder</label>
+                        <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600' }}>Research Topic</label>
                         {!isCreatingFolder ? (
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
                                 <select
@@ -108,7 +141,7 @@ export default function UploadModal({ isOpen, onClose, onSuccess, credentials })
                                     onChange={e => setSelectedFolderId(e.target.value)}
                                     style={styles.input}
                                 >
-                                    <option value="">-- No Folder (Global) --</option>
+                                    <option value="" disabled>-- Select a Topic --</option>
                                     {folders.map(f => (
                                         <option key={f._id} value={f._id}>{f.name}</option>
                                     ))}
@@ -121,7 +154,7 @@ export default function UploadModal({ isOpen, onClose, onSuccess, credentials })
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
                                 <input
                                     type="text"
-                                    placeholder="Folder Name (e.g. Client A)"
+                                    placeholder="Topic Name (e.g. AI Safety)"
                                     value={newFolderName}
                                     onChange={e => setNewFolderName(e.target.value)}
                                     style={styles.input}
@@ -156,14 +189,14 @@ export default function UploadModal({ isOpen, onClose, onSuccess, credentials })
                         </button>
                         <button
                             type="submit"
-                            disabled={!file || isUploading}
+                            disabled={files.length === 0 || isUploading || (!isCreatingFolder && !selectedFolderId)}
                             style={{
                                 ...styles.uploadBtn,
-                                opacity: (!file || isUploading) ? 0.6 : 1,
-                                cursor: (!file || isUploading) ? 'not-allowed' : 'pointer',
+                                opacity: (files.length === 0 || isUploading || (!isCreatingFolder && !selectedFolderId)) ? 0.6 : 1,
+                                cursor: (files.length === 0 || isUploading || (!isCreatingFolder && !selectedFolderId)) ? 'not-allowed' : 'pointer',
                             }}
                         >
-                            {isUploading ? '⏳ Uploading…' : '⬆ Upload PDF'}
+                            {isUploading ? `⏳ Uploading (${uploadProgress.current}/${uploadProgress.total})…` : '⬆ Upload PDFs'}
                         </button>
                     </div>
                 </form>

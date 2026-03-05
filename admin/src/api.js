@@ -45,14 +45,41 @@ export const uploadPaper = async (file, folderId, credentials) => {
 };
 
 /**
- * Fetches the list of uploaded papers from the backend.
+ * Fetches the list of all aggregate Topics (folders).
+ */
+export const getTopics = async (credentials) => {
+  const response = await api.get('/admin/topics', {
+    auth: { username: credentials.username, password: credentials.password }
+  });
+  return response.data;
+};
+
+/**
+ * Fetches the list of uploaded papers for a specific topic.
+ */
+export const getTopicFiles = async (topicId, credentials) => {
+  const response = await api.get(`/admin/topics/${topicId}/files`, {
+    auth: { username: credentials.username, password: credentials.password }
+  });
+  return response.data;
+};
+
+/**
+ * Fetches the list of all uploaded papers (legacy/fallback).
  */
 export const getFiles = async (credentials) => {
   const response = await api.get('/admin/files', {
-    auth: {
-      username: credentials.username,
-      password: credentials.password
-    }
+    auth: { username: credentials.username, password: credentials.password }
+  });
+  return response.data;
+};
+
+/**
+ * Deletes an entire topic and all its documents and chunks.
+ */
+export const deleteTopic = async (topicId, credentials) => {
+  const response = await api.delete(`/admin/topics/${topicId}`, {
+    auth: { username: credentials.username, password: credentials.password }
   });
   return response.data;
 };
@@ -62,10 +89,7 @@ export const getFiles = async (credentials) => {
  */
 export const deleteFile = async (fileId, credentials) => {
   const response = await api.delete(`/admin/files/${fileId}`, {
-    auth: {
-      username: credentials.username,
-      password: credentials.password
-    }
+    auth: { username: credentials.username, password: credentials.password }
   });
   return response.data;
 };

@@ -25,7 +25,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_CONFIG = {
     "_id": "global_config",
     "chunking": {
-        "active_strategies": ["recursive"],
+        "active_strategies": AVAILABLE_STRATEGIES,
         "options": AVAILABLE_STRATEGIES
     },
     "embedding": {
@@ -42,6 +42,10 @@ DEFAULT_CONFIG = {
     },
     "debug_mode": False,       # show retrieval debug info in chat
     "chat_enabled": True,      # kill-switch for the chat frontend
+    "frontend_settings": {
+        "visible_strategies": AVAILABLE_STRATEGIES,
+        "visible_models": []   # Empty = all visible
+    }
 }
 
 
@@ -50,16 +54,33 @@ async def _get_or_seed_config(db) -> dict:
     config = await db["system_config"].find_one({"_id": "global_config"})
     if not config:
         await db["system_config"].insert_one(DEFAULT_CONFIG)
-        config = DEFAULT_CONFIG.copy()
-    # Back-compat: migrate old `active` (single string) → `active_strategies` (list)
-    if "active" in config.get("chunking", {}) and "active_strategies" not in config.get("chunking", {}):
-        strategies = [config["chunking"]["active"]]
-        await db["system_config"].update_one(
-            {"_id": "global_config"},
-            {"$set": {"chunking.active_strategies": strategies},
-             "$unset": {"chunking.active": ""}}
-        )
-        config["chunking"]["active_strategies"] = strategies
+        return DEFAULT_CONFIG.copy()
+
+    # FORCE updates for existing config to match user's request
+    updates = {}
+    current_strategies = config.get("chunking", {}).get("active_strategies", [])
+    if len(current_strategies) < len(AVAILABLE_STRATEGIES):
+        updates["chunking.active_strategies"] = AVAILABLE_STRATEGIES
+    if not config.get("frontend_settings"):
+        updates["frontend_settings"] = DEFAULT_CONFIG["frontend_settings"]
+    if "llm" not in config or "catalogue" not in config["llm"]:
+        updates["llm.catalogue"] = DEFAULT_CONFIG["llm"]["catalogue"]
+    
+    # Ensure these booleans exist and aren't stuck in an old state
+    if "debug_mode" not in config:
+        updates["debug_mode"] = DEFAULT_CONFIG["debug_mode"]
+    if "chat_enabled" not in config:
+        updates["chat_enabled"] = DEFAULT_CONFIG["chat_enabled"]
+        
+    if updates:
+        await db["system_config"].update_one({"_id": "global_config"}, {"$set": updates})
+        # Merge updates into the local config object so the response is correct immediately
+        for k, v in updates.items():
+            if '.' in k:
+                parent, child = k.split('.')
+                config[parent][child] = v
+            else:
+                config[k] = v
     return config
 
 
@@ -152,6 +173,174 @@ async def list_files(username: str = Depends(verify_admin)):
         
         files.append(doc)
     return files
+
+
+# ─── Topics (Folders) Aggregation ─────────────────────────────────────────────
+@router.get("/topics")
+async def list_topics(username: str = Depends(verify_admin)):
+    """Aggregate files into Research Topics (Folders) for the admin dashboard."""
+    db = get_database()
+    
+    # 1. Fetch all explicit folders
+    folders = await db["folders"].find({}).to_list(1000)
+    
+    # Initialize the topic map with explicit folders
+    topics_map = {}
+    for f in folders:
+        fid = str(f["_id"])
+        topics_map[fid] = {
+            "id": fid,
+            "name": f.get("name", "Unnamed Topic"),
+            "documents_count": 0,
+            "chunks_count": 0,
+            "active_strategies": set(),
+            "status": "embedded" # default optimistic status
+        }
+    
+    # Ensure 'uncategorized' exists for files without a topic
+    topics_map["uncategorized"] = {
+        "id": "uncategorized",
+        "name": "Uncategorized",
+        "documents_count": 0,
+        "chunks_count": 0,
+        "active_strategies": set(),
+        "status": "embedded"
+    }
+
+    # 2. Iterate over all files and populate the map
+    files = await db["admin_files"].find({}).to_list(None)
+    
+    status_rank = {"error": 5, "processing": 4, "uploaded": 3, "chunked": 2, "embedded": 1}
+
+    for doc in files:
+        fid = str(doc.get("folder_id")) if doc.get("folder_id") else "uncategorized"
+        
+        # In case a folder was deleted but files still reference it
+        if fid not in topics_map:
+            topics_map[fid] = {
+                "id": fid,
+                "name": f"Unknown Topic ({fid})",
+                "documents_count": 0,
+                "chunks_count": 0,
+                "active_strategies": set(),
+                "status": "embedded"
+            }
+            
+        t = topics_map[fid]
+        t["documents_count"] += 1
+        t["chunks_count"] += doc.get("chunks_count", 0)
+        
+        # Aggregate strategies
+        doc_stats = doc.get("strategy_stats", {})
+        for strat in doc_stats.keys():
+            t["active_strategies"].add(strat)
+            
+        # Determine worst-case status for the topic
+        current_status = t["status"]
+        doc_status = doc.get("status", "uploaded")
+        if status_rank.get(doc_status, 0) > status_rank.get(current_status, 1):
+            t["status"] = doc_status
+
+    # 3. Clean up empty topics if necessary (optional: we can keep empty folders visible)
+    topics = list(topics_map.values())
+    
+    # Only remove 'uncategorized' if it's strictly empty
+    if topics_map["uncategorized"]["documents_count"] == 0:
+        topics = [t for t in topics if t["id"] != "uncategorized"]
+
+    # Convert sets to lists
+    for t in topics:
+        t["active_strategies"] = list(t["active_strategies"])
+
+    # Sort alphabetically
+    topics.sort(key=lambda x: x["name"].lower())
+    
+    return topics
+
+
+@router.get("/topics/{topic_id}/files")
+async def get_topic_files(topic_id: str, username: str = Depends(verify_admin)):
+    """Get all documents belonging to a specific topic."""
+    db = get_database()
+    query = {}
+    
+    if topic_id == "uncategorized":
+        query = {"folder_id": {"$in": [None, ""]}}
+    else:
+        # Some legacy docs might store ObjectId, others strings
+        from bson import ObjectId
+        query_conditions = [{"folder_id": topic_id}]
+        try:
+            query_conditions.append({"folder_id": ObjectId(topic_id)})
+        except Exception:
+            pass
+        query = {"$or": query_conditions}
+        
+    cursor = db["admin_files"].find(query).sort("uploaded_at", -1)
+    files = []
+    async for doc in cursor:
+        doc["_id"] = str(doc["_id"])
+        doc["folder_id"] = str(doc.get("folder_id", ""))
+        if "title" not in doc:
+            doc["title"] = doc.get("filename", "unknown.pdf").rsplit(".", 1)[0].replace("_", " ").title()
+        files.append(doc)
+    return files
+
+
+@router.delete("/topics/{topic_id}")
+async def delete_topic(topic_id: str, username: str = Depends(verify_admin)):
+    """Deletes an entire topic, including all its documents and chunks."""
+    db = get_database()
+    query = {}
+    
+    if topic_id == "uncategorized":
+        query = {"folder_id": {"$in": [None, ""]}}
+    else:
+        from bson import ObjectId
+        query_conditions = [{"folder_id": topic_id}]
+        try:
+            query_conditions.append({"folder_id": ObjectId(topic_id)})
+        except Exception:
+            pass
+        query = {"$or": query_conditions}
+
+    files = await db["admin_files"].find(query).to_list(None)
+    
+    deleted_files_count = 0
+    deleted_chunks_count = 0
+    
+    for paper in files:
+        obj_id = paper["_id"]
+        
+        # Delete physical file
+        filepath = Path(paper.get("filepath", ""))
+        if filepath.exists() and filepath.is_file():
+            try:
+                filepath.unlink()
+            except Exception as e:
+                print(f"Warning: could not delete physical file: {e}")
+                
+        # Delete related chunks
+        res = await db["paper_chunks"].delete_many({"paper_id": obj_id})
+        deleted_chunks_count += res.deleted_count
+        
+        # Delete document record
+        await db["admin_files"].delete_one({"_id": obj_id})
+        deleted_files_count += 1
+
+    # Delete the folder itself if it's not uncategorized
+    if topic_id != "uncategorized":
+        from bson import ObjectId
+        try:
+            await db["folders"].delete_one({"_id": ObjectId(topic_id)})
+        except Exception:
+            pass
+
+    return {
+        "message": f"Topic deleted successfully. Removed {deleted_files_count} documents and {deleted_chunks_count} chunks.",
+        "documents_deleted": deleted_files_count,
+        "chunks_deleted": deleted_chunks_count
+    }
 
 
 # ─── Delete file (cascade) ─────────────────────────────────────────────────────
@@ -341,6 +530,10 @@ async def get_llm_catalogue(username: str = Depends(verify_admin)):
     return LLM_CATALOGUE
 
 
+class FrontendSettings(BaseModel):
+    visible_strategies: Optional[List[str]] = None
+    visible_models: Optional[List[str]] = None
+
 class ConfigUpdate(BaseModel):
     active_strategies: Optional[List[str]] = None
     embedding: Optional[str] = None
@@ -348,6 +541,7 @@ class ConfigUpdate(BaseModel):
     active_model: Optional[str] = None
     debug_mode: Optional[bool] = None
     chat_enabled: Optional[bool] = None
+    frontend_settings: Optional[FrontendSettings] = None
 
 
 @router.put("/config")
@@ -373,6 +567,11 @@ async def update_config(update_data: ConfigUpdate, username: str = Depends(verif
         set_fields["debug_mode"] = update_data.debug_mode
     if update_data.chat_enabled is not None:
         set_fields["chat_enabled"] = update_data.chat_enabled
+    if update_data.frontend_settings is not None:
+        if update_data.frontend_settings.visible_strategies is not None:
+            set_fields["frontend_settings.visible_strategies"] = update_data.frontend_settings.visible_strategies
+        if update_data.frontend_settings.visible_models is not None:
+            set_fields["frontend_settings.visible_models"] = update_data.frontend_settings.visible_models
 
     if not set_fields:
         raise HTTPException(status_code=400, detail="No fields to update.")

@@ -129,19 +129,19 @@ export default function Settings({ credentials }) {
                     {/* Chat Access & Debug */}
                     <Section title="🛠️ App Features" sub="Enable or disable core frontend features.">
                         <div style={st.grid2}>
-                            <label onClick={() => setConfig(p => ({ ...p, chat_enabled: !p.chat_enabled }))} style={{ ...st.selCard, ...(config.chat_enabled ? st.selCardOn : {}) }}>
+                            <label onClick={() => setConfig(p => ({ ...p, chat_enabled: p.chat_enabled === false ? true : false }))} style={{ ...st.selCard, ...(config.chat_enabled === false ? st.selCardOn : {}) }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                    <span style={{ fontSize: '1.3rem' }}>💬</span>
-                                    <span style={{ ...st.check, ...(config.chat_enabled ? st.checkOn : {}) }}>{config.chat_enabled ? '✓' : ''}</span>
+                                    <span style={{ fontSize: '1.3rem' }}>🚫</span>
+                                    <span style={{ ...st.check, ...(config.chat_enabled === false ? st.checkOn : {}) }}>{config.chat_enabled === false ? '✓' : ''}</span>
                                 </div>
-                                <div style={st.selLabel}>Enable Chat Frontend</div>
-                                <div style={st.selDesc}>Allows users to access the ChatGPT-style interface on port 4000. Disable for maintenance.</div>
+                                <div style={st.selLabel}>Disable Chat Frontend</div>
+                                <div style={st.selDesc}>Check this to block users from accessing the ChatGPT-style interface. Use for maintenance.</div>
                             </label>
 
-                            <label onClick={() => setConfig(p => ({ ...p, debug_mode: !p.debug_mode }))} style={{ ...st.selCard, ...(config.debug_mode ? { ...st.selCardOn, borderColor: '#f59e0b', background: 'rgba(245,158,11,0.1)' } : {}) }}>
+                            <label onClick={() => setConfig(p => ({ ...p, debug_mode: !p.debug_mode }))} style={{ ...st.selCard, ...(config.debug_mode === true ? { ...st.selCardOn, borderColor: '#f59e0b', background: 'rgba(245,158,11,0.1)' } : {}) }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                     <span style={{ fontSize: '1.3rem' }}>🐛</span>
-                                    <span style={{ ...st.check, ...(config.debug_mode ? { ...st.checkOn, background: '#f59e0b', color: '#1e293b' } : {}) }}>{config.debug_mode ? '✓' : ''}</span>
+                                    <span style={{ ...st.check, ...(config.debug_mode === true ? { ...st.checkOn, background: '#f59e0b', color: '#1e293b' } : {}) }}>{config.debug_mode === true ? '✓' : ''}</span>
                                 </div>
                                 <div style={st.selLabel}>Enable Debug Mode</div>
                                 <div style={st.selDesc}>Sends detailed retrieval metrics (retrieved chunks, cosine similarity scores) to the chat frontend.</div>
@@ -400,11 +400,11 @@ const st = {
     page: { maxWidth: '820px', margin: '0 auto', padding: '2rem 1rem', position: 'relative' },
     centered: { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4rem' },
     header: { marginBottom: '1.25rem' },
-    title: { color: '#f8fafc', margin: '0 0 0.4rem', fontSize: '1.5rem', fontWeight: '700' },
-    subtitle: { color: '#94a3b8', margin: 0, fontSize: '0.9rem' },
-    pageTabs: { display: 'flex', gap: '0.25rem', marginBottom: '1.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)' },
+    title: { color: '#0f172a', margin: '0 0 0.4rem', fontSize: '1.5rem', fontWeight: '700' },
+    subtitle: { color: '#64748b', margin: 0, fontSize: '0.9rem' },
+    pageTabs: { display: 'flex', gap: '0.25rem', marginBottom: '1.75rem', borderBottom: '1px solid #e2e8f0' },
     pageTab: { padding: '0.6rem 1.2rem', background: 'none', border: 'none', borderBottom: '2px solid transparent', color: '#64748b', cursor: 'pointer', fontSize: '0.88rem', fontWeight: '600', transition: 'all 0.2s', marginBottom: '-1px' },
-    pageTabOn: { color: '#f8fafc', borderBottomColor: '#3b82f6' },
+    pageTabOn: { color: '#0f172a', borderBottomColor: '#3b82f6' },
     form: { display: 'flex', flexDirection: 'column', gap: '1.5rem' },
     card: { background: 'rgba(15,23,42,0.9)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '1.35rem', backdropFilter: 'blur(8px)' },
     cardTitle: { color: '#f8fafc', margin: '0 0 0.3rem', fontSize: '0.98rem', fontWeight: '700' },

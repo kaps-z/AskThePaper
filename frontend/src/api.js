@@ -20,3 +20,6 @@ export const getSession = (id) =>
 
 export const deleteSession = (id) =>
     api.delete(`/chat/sessions/${id}`).then(r => r.data);
+
+export const getChatTopics = () =>
+    api.get('/chat/topics').then(r => r.data);
