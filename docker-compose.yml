@@ -8,8 +8,10 @@ services:
     container_name: askthepaper_backend
     ports:
       - "8000:8000"
+    env_file:
+      - ./backend/.env # loads GEMINI_API_KEY, OPENAI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY, etc.
     environment:
-      # Use host.docker.internal to talk to the MongoDB running on your machine
+      # Override the MONGODB_URL from .env — inside Docker we use host.docker.internal, not localhost
       - MONGODB_URL=mongodb://host.docker.internal:27017
       - DATABASE_NAME=askthepaper
       - ADMIN_USERNAME=admin
@@ -22,6 +24,7 @@ services:
     # and the backend would return 404 "Physical file missing" on process.
     volumes:
       - uploads_data:/app/uploads
+      - huggingface_cache:/root/.cache/huggingface # persist model so it never re-downloads
     networks:
       - askthepaper_network
     restart: unless-stopped
@@ -63,3 +66,4 @@ networks:
 # Named volumes: persist data across container restarts/rebuilds.
 volumes:
   uploads_data:
+  huggingface_cache: # persists the embedding model across container restarts

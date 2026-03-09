@@ -25,6 +25,8 @@ from app.embedding import embed_text, EMBEDDING_MODELS, DEFAULT_MODEL_ID
 from app.chunking import AVAILABLE_STRATEGIES
 from app.llm import get_llm_response, LLM_CATALOGUE, DEFAULT_MODEL
 from app.chat.witty import random_phrase
+from app.prompts import build_rag_system_prompt
+from app.evaluation import evaluate_rag_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Chat"])
@@ -108,18 +110,7 @@ async def _retrieve_chunks(db, question: str, strategy: Optional[str], top_k: in
     return scored[:top_k]
 
 
-def _build_system_prompt(chunks: list) -> str:
-    context = "\n\n---\n\n".join(
-        f"[Source {i+1} | {c['strategy']} | Page {c['metadata'].get('page','?')} | Score {c['score']:.3f}]\n{c['content']}"
-        for i, c in enumerate(chunks)
-    )
-    return f"""You are AskThePaper, an expert research assistant.
-Answer the user's question using ONLY the provided source excerpts.
-Be precise, cite source numbers (e.g. "[Source 1]"), and acknowledge if insufficient context is available.
-
-=== RETRIEVED CONTEXT ===
-{context}
-========================"""
+# _build_system_prompt has been moved to app/prompts.py as build_rag_system_prompt
 
 
 # ─── Routes ────────────────────────────────────────────────────────────────────
@@ -194,12 +185,16 @@ async def get_public_config():
 async def ask(req: AskRequest):
     db = get_database()
     cfg = await _get_config(db)
+    debug_mode = cfg.get("debug_mode", False)
+
+    logger.info(f"📥 /chat/ask | question='{req.question[:80]}' topic={req.topic_id} session={req.session_id}")
 
     # Respect admin kill-switch
     if not cfg.get("chat_enabled", True):
+        logger.warning("⛔ Chat is disabled by admin. Rejecting request.")
         raise HTTPException(status_code=503, detail="Chat is currently disabled by the administrator.")
 
-    # Session handling
+    # ── Session handling ──────────────────────────────────────────────────────
     session_id = req.session_id or str(uuid.uuid4())
     session = await db["chat_sessions"].find_one({"session_id": session_id})
     if not session:
@@ -209,16 +204,22 @@ async def ask(req: AskRequest):
             "title": req.question[:60],
         }
         await db["chat_sessions"].insert_one(session)
+        logger.info(f"🆕 New session created: {session_id}")
+    else:
+        logger.info(f"↩️  Resuming session: {session_id}")
 
-    # Resolve model + strategy
+    # ── Resolve model + strategy ───────────────────────────────────────────────
     embed_model = cfg.get("embedding", {}).get("active", DEFAULT_MODEL_ID)
     model_id    = req.model_id or cfg.get("llm", {}).get("active_model", DEFAULT_MODEL)
     strategy    = req.strategy
+    eval_framework = cfg.get("evaluation", {}).get("active", "custom")
 
-    # Verify topic exists and find all embedded papers in it
+    logger.info(f"🔧 Config resolved | model={model_id} embed={embed_model} strategy={strategy or 'default'} eval={eval_framework}")
+
+    # ── Locate papers in the requested topic ───────────────────────────────────
     topic_id = req.topic_id
     query = {"status": "embedded"}
-    
+
     if topic_id == "uncategorized":
         query["folder_id"] = {"$in": [None, ""]}
     else:
@@ -229,33 +230,37 @@ async def ask(req: AskRequest):
         except Exception:
             pass
         query["$or"] = query_conditions
-        
+
     cursor = db["admin_files"].find(query, {"_id": 1})
     paper_ids = [doc["_id"] for doc in await cursor.to_list(None)]
+    logger.info(f"📚 Papers found in topic '{topic_id}': {len(paper_ids)}")
 
     if not paper_ids:
+        logger.warning(f"⚠️  No embedded papers found for topic='{topic_id}'")
         return AskResponse(
             answer="No embedded documents available in this topic. Please select another topic or check the admin dashboard.",
             session_id=str(session_id),
             message_id=str(uuid.uuid4())
         )
 
-    # Default to the first active strategy if not specified
+    # ── Check chunk availability ───────────────────────────────────────────────
     strategy_to_check = strategy or cfg.get("chunking", {}).get("active_strategies", ["recursive"])[0]
-    
     chunk_count = await db["paper_chunks"].count_documents({
         "paper_id": {"$in": paper_ids},
         "strategy": strategy_to_check
     })
-    
+    logger.info(f"🧩 Chunks available | strategy={strategy_to_check} count={chunk_count}")
+
     if chunk_count == 0:
+        logger.warning(f"⚠️  No chunks for strategy='{strategy_to_check}' across {len(paper_ids)} paper(s).")
         return AskResponse(
             answer="No chunks available. Please check with admin to chat on this doc.",
             session_id=str(session_id),
             message_id=str(uuid.uuid4())
         )
 
-    # Retrieve chunks across all papers in the topic
+    # ── Retrieve top-K relevant chunks ─────────────────────────────────────────
+    logger.info(f"🔍 Retrieving top-{req.top_k} chunks for the query...")
     chunks = await _retrieve_chunks(
         db=db,
         question=req.question,
@@ -264,33 +269,55 @@ async def ask(req: AskRequest):
         embed_model=embed_model,
         paper_ids=paper_ids
     )
+    if chunks:
+        top_score = chunks[0].get("score", 0)
+        logger.info(f"✅ Retrieved {len(chunks)} chunks | top score={top_score:.4f}")
+    else:
+        logger.warning("⚠️  No chunks retrieved after similarity search.")
 
+    # ── Build prompt & call LLM ────────────────────────────────────────────────
     if not chunks:
         answer = "I couldn't find any relevant information in the selected topic to answer your question."
     else:
-        # Build prompt and call LLM
-        system_prompt = _build_system_prompt(chunks)
+        system_prompt = build_rag_system_prompt(chunks)
+        logger.info(f"🤖 Calling LLM | model={model_id} prompt_len={len(system_prompt)} chars")
         try:
             answer = await get_llm_response(
-                prompt=req.question,
                 system_prompt=system_prompt,
+                user_message=req.question,
                 model_id=model_id,
             )
+            logger.info(f"✅ LLM response received | answer_len={len(answer)} chars")
         except Exception as e:
-            logger.error(f"LLM Error: {e}")
+            logger.error(f"❌ LLM call failed | model={model_id} error={e}", exc_info=True)
             answer = "Sorry, I encountered an error while communicating with the AI model. Please try again later."
 
+    # ── Evaluation (only when debug_mode is ON) ────────────────────────────────
     debug_payload = None
-    if cfg.get("debug_mode", False):
+    if debug_mode:
+        logger.info(f"📊 Debug mode ON — running evaluation (framework={eval_framework})")
+        try:
+            eval_result = await evaluate_rag_response(
+                question=req.question,
+                answer=answer,
+                chunks=chunks,
+                framework=eval_framework,
+            )
+        except Exception as e:
+            logger.error(f"❌ Evaluation failed: {e}", exc_info=True)
+            eval_result = {"error": str(e)}
+
         debug_payload = {
             "model_id":        model_id,
             "embed_model":     embed_model,
             "strategy_filter": strategy or "all",
             "top_k":           req.top_k,
-            "chunks":          chunks
+            "chunks":          chunks,
+            "evaluation":      eval_result,
         }
+        logger.info(f"📊 Evaluation complete: {eval_result}")
 
-    # Persist message
+    # ── Persist to MongoDB ─────────────────────────────────────────────────────
     message_id = str(uuid.uuid4())
     await db["chat_messages"].insert_one({
         "message_id":  message_id,
@@ -302,12 +329,11 @@ async def ask(req: AskRequest):
         "created_at":  datetime.now(timezone.utc),
         "debug":       debug_payload,
     })
-
-    # Update session's updated_at
     await db["chat_sessions"].update_one(
         {"session_id": session_id},
         {"$set": {"updated_at": datetime.now(timezone.utc)}}
     )
+    logger.info(f"💾 Message saved | message_id={message_id} session={session_id}")
 
     return AskResponse(answer=answer, session_id=session_id, message_id=message_id, debug=debug_payload)
 
@@ -318,15 +344,6 @@ async def list_sessions(limit: int = 30):
     cursor = db["chat_sessions"].find({}, {"_id": 0}).sort("updated_at", -1).limit(limit)
     sessions = await cursor.to_list(length=limit)
     return sessions
-
-
-@router.get("/sessions/{session_id}")
-async def get_session(session_id: str):
-    db = get_database()
-    msgs = await db["chat_messages"].find(
-        {"session_id": session_id}, {"_id": 0}
-    ).sort("created_at", 1).to_list(length=200)
-    return msgs
 
 
 @router.get("/sessions/{session_id}")

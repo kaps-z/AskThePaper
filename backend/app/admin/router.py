@@ -15,6 +15,7 @@ from app.core.database import get_database
 from app.chunking import AVAILABLE_STRATEGIES, run_strategies
 from app.llm import LLM_CATALOGUE, ALL_MODEL_IDS, DEFAULT_MODEL
 from app.embedding import EMBEDDING_MODELS, DEFAULT_MODEL_ID as DEFAULT_EMBED_MODEL
+from app.evaluation import DEFAULT_EVALUATION_CONFIG
 
 router = APIRouter(tags=["Admin"])
 
@@ -36,10 +37,7 @@ DEFAULT_CONFIG = {
         "active_model": DEFAULT_MODEL,
         "catalogue": LLM_CATALOGUE,
     },
-    "evaluation": {
-        "active": "custom",
-        "options": ["custom", "ragas", "deepeval", "trulens", "langsmith"]
-    },
+    "evaluation": DEFAULT_EVALUATION_CONFIG,
     "debug_mode": False,       # show retrieval debug info in chat
     "chat_enabled": True,      # kill-switch for the chat frontend
     "frontend_settings": {

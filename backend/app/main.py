@@ -11,10 +11,26 @@ Run with:
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import logging
 
 from app.core.database import get_database, lifespan
 from app.admin.router import router as admin_router
 from app.chat.router import router as chat_router
+
+# ---------------------------------------------------------------------------
+# Logging Configuration
+# ---------------------------------------------------------------------------
+# All module loggers (app.chunking, app.embedding, app.llm, app.chat.router,
+# app.evaluation, etc.) inherit from the root logger configured here.
+# To see debug-level messages, change INFO → DEBUG below.
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s — %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+logger.info("🚀 AskThePaper API starting up — logging configured.")
 
 # ---------------------------------------------------------------------------
 # App Initialization
